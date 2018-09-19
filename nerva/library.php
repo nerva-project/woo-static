@@ -335,7 +335,7 @@ class XnvNodeTools
         
         curl_setopt_array($curl, array(
                                        CURLOPT_RETURNTRANSFER => 1,
-                                       CURLOPT_URL => 'https://explorer.getnerva.org/api/networkinfo',
+                                       CURLOPT_URL => 'https://testexplorer.getnerva.org/api/networkinfo',
                                        ));
         $resp = curl_exec($curl);
         curl_close($curl);
@@ -350,7 +350,7 @@ class XnvNodeTools
         
         curl_setopt_array($curl, array(
                                        CURLOPT_RETURNTRANSFER => 1,
-                                       CURLOPT_URL => 'https://explorer.getnerva.org/api/search/' . $height,
+                                       CURLOPT_URL => 'https://testexplorer.getnerva.org/api/search/' . $height,
                                        ));
         $resp = curl_exec($curl);
         curl_close($curl);
@@ -365,7 +365,7 @@ class XnvNodeTools
         $curl = curl_init();
         curl_setopt_array($curl, array(
                                        CURLOPT_RETURNTRANSFER => 1,
-                                       CURLOPT_URL => 'https://explorer.getnerva.org/api/outputs?txhash=' .$tx_hash . '&address='. $address . '&viewkey='. $viewKey .'&txprove=0',
+                                       CURLOPT_URL => 'https://testexplorer.getnerva.org/api/outputs?txhash=' .$tx_hash . '&address='. $address . '&viewkey='. $viewKey .'&txprove=0',
                                        ));
         $resp = curl_exec($curl);
         curl_close($curl);
@@ -390,7 +390,7 @@ class XnvNodeTools
         
         curl_setopt_array($curl, array(
                                        CURLOPT_RETURNTRANSFER => 1,
-                                       CURLOPT_URL => 'https://explorer.getnerva.org/api/mempool',
+                                       CURLOPT_URL => 'https://testexplorer.getnerva.org/api/mempool',
                                        ));
         $resp = curl_exec($curl);
         curl_close($curl);
