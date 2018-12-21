@@ -53,7 +53,7 @@
 	}, <?= $this->reloadTime; ?>);
 </script>
 
-<div id="nerva_gateway" class="xnv-payment-container <?php echo $displayedDarkTheme ? 'dark' : ''; ?>">
+<div id="nerva_gateway" class="xnv-payment-container">
 	<div class="header">
 		<img src="<?= $pluginDirectory?>assets/png-nerva-logo-1024x1024.png" alt="Nerva" />
 		<?php _e('Nerva Payment', $pluginIdentifier) ?>

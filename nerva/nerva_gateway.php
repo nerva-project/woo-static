@@ -8,6 +8,11 @@ Author: NERVA Project
 Author URI: https://getnerva.org
 */
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
@@ -110,3 +115,28 @@ function nervaGateway_ajaxReload(){
 
 add_action( 'wp_ajax_nerva_gateway_ajax_reload', 'nervaGateway_ajaxReload' );
 add_action( 'wp_ajax_nopriv_nerva_gateway_ajax_reload', 'nervaGateway_ajaxReload' );
+
+function sv_wc_add_order_meta_box_action( $actions ) {
+    global $theorder;
+
+	if ( $theorder->is_paid() ){
+        return $actions;
+    }
+
+    $actions['wc_custom_order_action'] = __( 'Recheck payment', 'my-textdomain' );
+    return $actions;
+}
+
+function sv_wc_recheck_payment( $order )
+{
+	$payid = $order->get_meta('Payment ID');
+	$amount = $order->get_meta('Amount requested (XNV)');
+    $message = sprintf( __( 'Payment rechecked by %s', 'my-textdomain' ), wp_get_current_user()->display_name );
+	$order->add_order_note( $message );
+
+	$gateway = new Nerva_Gateway();
+	$gateway->verify_payment($payid, $amount, $order);
+}
+
+add_action( 'woocommerce_order_actions', 'sv_wc_add_order_meta_box_action' );	
+add_action( 'woocommerce_order_action_wc_custom_order_action', 'sv_wc_recheck_payment' );

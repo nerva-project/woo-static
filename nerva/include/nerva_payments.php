@@ -6,6 +6,11 @@
  * Modified to work with Nerva
  */
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+
 
 class Nerva_Gateway extends WC_Payment_Gateway
 {
@@ -13,9 +18,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
     private $discount;
     private $confirmed = false;
     private $nerva_daemon;
-    private $non_rpc = false;
     private $confirmations = 0;
-    private $xnv_tools;
     private $confirmations_wait;
 	
 	private $version;
@@ -28,22 +31,15 @@ class Nerva_Gateway extends WC_Payment_Gateway
 	/** @var string|null  */
 	private $address;
 	/** @var string|null  */
-	private $viewKey;
-	/** @var string|null  */
 	private $accept_zero_conf;
 	/** @var string|null  */
-	private $use_viewKey;
-	/** @var string|null  */
-	private $use_rpc;
-	/** @var bool  */
 	private $zero_confirm;
 	/** @var string  */
-	private $darkTheme;
-	/** @var bool  */
-	private $mempool_tx_found = false;
+    private $mempool_tx_found = false;
+    
+    private $nerva_fiat_value = 1;
+    private $testnet;
 	
-	
-
     function __construct()
     {
         $this->id = "nerva_gateway";
@@ -58,25 +54,14 @@ class Nerva_Gateway extends WC_Payment_Gateway
         $this->log = new WC_Logger();
 
         $this->init_form_fields();
-		$this->darkTheme = $this->get_option('darkTheme');
         $this->host = $this->get_option('daemon_host');
         $this->port = $this->get_option('daemon_port');
         $this->address = $this->get_option('nerva_address');
-        $this->viewKey = $this->get_option('viewKey');
         $this->discount = $this->get_option('discount');
         $this->confirmations_wait = $this->get_option('confs');
+        $this->nerva_fiat_value = $this->get_option('fiat_value');
+        $this->testnet = $this->get_option('environment');
         
-        $this->use_viewKey = $this->get_option('use_viewKey');
-        $this->use_rpc = $this->get_option('use_rpc');
-        
-        if($this->use_viewKey == 'yes')
-        {
-            $this->non_rpc = true;
-        }
-        if($this->use_rpc == 'yes')
-        {
-            $this->non_rpc = false;
-        }
         if($this->confirmations_wait == 0)
         {
             $this->zero_confirm = true;
@@ -99,8 +84,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
             add_action('woocommerce_email_before_order_table', array($this, 'email_instructions'), 10, 2);
         }
 		
-        $this->nerva_daemon = new Nerva_Library($this->host, $this->port);
-        $this->xnv_tools = new XnvNodeTools();
+        $this->nerva_daemon = new Nerva_Library($this->host, $this->port, $this->testnet);
     }
     
     public static function install(){
@@ -142,38 +126,11 @@ class Nerva_Gateway extends WC_Payment_Gateway
                 'desc_tip' => __('Payment description the customer will see during the checkout process.', 'nerva_gateway'),
                 'default' => __('Pay securely using XNV.', 'nerva_gateway')
             ),
-			'darkTheme' => array(
-				'title' => __('Dark theme', 'nerva_gateway'),
-				'label' => __('Enable the dark theme for the Nerva payment box', 'nerva_gateway'),
-				'type' => 'checkbox',
-				'default' => 'no'
-			),
-            
-            'use_viewKey' => array(
-                'title' => __('Use ViewKey', 'nerva_gateway'),
-                'label' => __(' Verify Transaction with ViewKey ', 'nerva_gateway'),
-                'type' => 'checkbox',
-                'description' => __('Fill in the Address and ViewKey fields to verify transactions with your ViewKey', 'nerva_gateway'),
-                'default' => 'no'
-            ),
             'nerva_address' => array(
                 'title' => __('Nerva Address', 'nerva_gateway'),
                 'label' => __('Useful for people that have not a daemon online'),
                 'type' => 'text',
                 'desc_tip' => __('Nerva Wallet Address', 'nerva_gateway')
-            ),
-            'viewKey' => array(
-                'title' => __('Secret ViewKey', 'nerva_gateway'),
-                'label' => __('Secret ViewKey'),
-                'type' => 'text',
-                'desc_tip' => __('Your secret ViewKey', 'nerva_gateway')
-            ),
-            'use_rpc' => array(
-                'title' => __('Use nerva-wallet-rpc', 'nerva_gateway'),
-                'label' => __(' Verify transactions with the nerva-wallet-rpc ', 'nerva_gateway'),
-                'type' => 'checkbox',
-                'description' => __('This must be setup seperatly', 'nerva_gateway'),
-                'default' => 'no'
             ),
             'daemon_host' => array(
                 'title' => __('Nerva wallet rpc Host/ IP', 'nerva_gateway'),
@@ -209,6 +166,12 @@ class Nerva_Gateway extends WC_Payment_Gateway
                 'description' => __('For small amounts transactions you can use zero. Three transactions is generally regarded as safe', 'nerva_gateway'),
                 'default' => '1'
             ),
+            'fiat_value' => array(
+                'title' => __(' Fiat value per XNV', 'nerva_gateway'),
+                'type' => 'text',
+                'description' => __('For converting item fiat price to equivalent XNV (In $)', 'nerva_gateway'),
+                'default' => '1'
+            ),
             'onion_service' => array(
                 'title' => __(' SSL warnings ', 'nerva_gateway'),
                 'label' => __(' Check to Silence SSL warnings', 'nerva_gateway'),
@@ -226,14 +189,12 @@ class Nerva_Gateway extends WC_Payment_Gateway
         echo "<p>Welcome to Nerva Extension for WooCommerce. Getting started: Make a connection with daemon";
         echo "<div style='border:1px solid #DDD;padding:5px 10px;font-weight:bold;color:#223079;background-color:#9ddff3;'>";
         
-        if(!$this->non_rpc) // only try to get balance data if using wallet-rpc
-            $this->getamountinfo();
+        $this->getamountinfo();
         
         echo "</div>";
         echo "<table class='form-table'>";
         $this->generate_settings_html();
         echo "</table>";
-        echo "<h4>Learn more about using nerva-wallet-rpc <a href=\"https://github.com/nerva-project/nervawp/blob/master/README.md\">here</a> and viewkeys <a href=\"https://getmonero.org/resources/moneropedia/viewkey.html\">here</a> </h4>";
     }
 
     public function getamountinfo()
@@ -282,15 +243,6 @@ class Nerva_Gateway extends WC_Payment_Gateway
         if ($this->check_nerva() != TRUE) {
             echo "<div class=\"error\"><p>Your Nerva Address doesn't look valid. Have you checked it?</p></div>";
         }
-        if(!$this->check_viewKey())
-        {
-            echo "<div class=\"error\"><p>Your ViewKey doesn't look valid. Have you checked it?</p></div>";
-        }
-        if($this->check_checkedBoxes())
-        {
-            echo "<div class=\"error\"><p>You must choose to either use nerva-wallet-rpc or a ViewKey, not both</p></div>";
-        }
-
     }
 
     // Validate fields
@@ -300,26 +252,6 @@ class Nerva_Gateway extends WC_Payment_Gateway
         $nerva_address = $this->settings['nerva_address'];
         if (strlen($nerva_address) == 97) {
             return true;
-        }
-        return false;
-    }
-    public function check_viewKey()
-    {
-        if($this->use_viewKey == 'yes')
-        {
-            if (strlen($this->viewKey) == 64) {
-                return true;
-            }
-            return false;
-        }
-        return true;
-    }
-    public function check_checkedBoxes()
-    {
-        if($this->use_viewKey == 'yes'){
-            if($this->use_rpc == 'yes'){
-                return true;
-            }
         }
         return false;
     }
@@ -354,36 +286,24 @@ class Nerva_Gateway extends WC_Payment_Gateway
 		
 		$displayedPaymentAddress = null;
 		$displayedPaymentId = null;
-		$displayedDarkTheme = $this->darkTheme === 'yes';
 	
 		if($amount_xnv2 !== null){
             //TODO: QR codes need to be tested. Commenting this out will hide the QR code box until we know they are working
 			//$qrUri = "nerva:$address?tx_payment_id=$payment_id";
 			
-			if($this->non_rpc){
+			$array_integrated_address = $this->nerva_daemon->make_integrated_address($payment_id);
+			if(!isset($array_integrated_address)){
+				$this->log->add('Nerva_Gateway', '[ERROR] Unable get integrated address');
+				// Seems that we can't connect with daemon, then set array_integrated_address, little hack
+				$array_integrated_address["integrated_address"] = $address;
+					
 				$displayedPaymentAddress = $address;
 				$displayedPaymentId = $payment_id;
-				
-				if($this->zero_confirm){
-					$this->verify_zero_conf($payment_id, $amount_xnv2, $order_id);
-				}else{
-					$this->verify_non_rpc($payment_id, $amount_xnv2, $order_id);
-				}
 			}else{
-				$array_integrated_address = $this->nerva_daemon->make_integrated_address($payment_id);
-				if(!isset($array_integrated_address)){
-					$this->log->add('Nerva_Gateway', '[ERROR] Unable get integrated address');
-					// Seems that we can't connect with daemon, then set array_integrated_address, little hack
-					$array_integrated_address["integrated_address"] = $address;
-					
-					$displayedPaymentAddress = $address;
-					$displayedPaymentId = $payment_id;
-				}else{
-					$displayedPaymentAddress = $array_integrated_address["integrated_address"];
-					$displayedPaymentId = null;
-				}
-				$this->verify_payment($payment_id, $amount_xnv2, $order);
+				$displayedPaymentAddress = $array_integrated_address["integrated_address"];
+				$displayedPaymentId = null;
 			}
+			$this->verify_payment($payment_id, $amount_xnv2, $order);
 		}
 		
 		$displayedCurrentConfirmation = null;
@@ -426,8 +346,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
     	if(count($stored_rate) > 0){
 			return $stored_rate[0]->payment_id;
 		}else{
-			$size = $this->non_rpc ? 32 : 8;
-			$payment_id = bin2hex(openssl_random_pseudo_bytes($size));
+			$payment_id = bin2hex(openssl_random_pseudo_bytes(8));
 			return $payment_id;
 		}
     }
@@ -506,49 +425,10 @@ class Nerva_Gateway extends WC_Payment_Gateway
 			$fiatCurrency === 'USD'
 		)){
 			return null;
-		}
-	
-	
-		$fiatPrice = file_get_contents('https://blockchain.info/tobtc?currency='.$fiatCurrency.'&value=10000');
-		if ($fiatPrice === false) {
-			$this->log->add('nerva_gateway', '[ERROR] Unable to get the market price of Nerva');
-			return null;
-		}
-		
-		$btcPerFiat = $fiatPrice/10000;
-		
-		$totalVolume = 0;
-		
-		list($tradeOgrePrice,$tradeogreVolume) = $this->getPriceFromTradeOgre();
-  
-		if($tradeOgrePrice !== null){
-			$totalVolume += $tradeogreVolume;
-		}
-		
-		if($totalVolume > 0){
-			$xnvSatoshiPrice = 0;
-			if($tradeOgrePrice !== null)	$xnvSatoshiPrice  += $tradeOgrePrice*($tradeogreVolume/$totalVolume);
-			
-			return round($xnvSatoshiPrice/$btcPerFiat, 8);
-		}else
-			return null;
+        }
+        
+        return $this->nerva_fiat_value;
     }
-    
-    private function getPriceFromTradeOgre(){
-		$rawMakerts = file_get_contents('https://tradeogre.com/api/v1/markets');
-		$markets = json_decode($rawMakerts, TRUE);
-		if($markets !== null){
-			foreach($markets as $market){
-				$marketSymbol = array_keys($market)[0];
-				if($marketSymbol === 'BTC-XNV'){
-					$pricePerXnv = (float)$market[$marketSymbol]['price'];
-					$volumeInBtc = (float)$market[$marketSymbol]['volume'];
-					return array($pricePerXnv,$volumeInBtc/$pricePerXnv);
-				}
-			}
-		}
-		return array(null,null);
-	}
     
     private function on_verified($payment_id, $amount_atomic_units, $order_id)
     {
@@ -581,26 +461,27 @@ class Nerva_Gateway extends WC_Payment_Gateway
         $this->mempool_tx_found = false;
         $i = 1;
         $correct_tx;
-        while($i <= count($pool_txs))
-        {
-           if($pool_txs[$i-1]["payment_id"] == $payment_id)
-           {
-               $this->mempool_tx_found = true;
-               $tx_index = $i - 1;
-           }
-           $i++;
-        }
-        
         $amount_atomic_units = $amount * 1000000000000;
-        
-        if($this->confirmations_wait == 0)
+        if (isset($pool_txs))
         {
-            if($pool_txs[$tx_index]["amount"] >= $amount_atomic_units)
+            while($i <= count($pool_txs))
             {
-               $this->on_verified($payment_id, $amount_atomic_units, $order_id);
-            }
+                if($pool_txs[$i-1]["payment_id"] == $payment_id)
+                {
+                    $this->mempool_tx_found = true;
+                    $tx_index = $i - 1;
+                    if($this->confirmations_wait == 0)
+                    {
+                        if($pool_txs[$tx_index]["amount"] >= $amount_atomic_units)
+                        {
+                            $this->on_verified($payment_id, $amount_atomic_units, $order_id);
+                        }
+                    }
+                }
+                $i++;
+            }            
         }
-        
+
         $get_payments_method = $this->nerva_daemon->get_payments($payment_id);
         if (isset($get_payments_method["payments"][0]["amount"])) {
 			$totalPayed = $get_payments_method["payments"][0]["amount"];
@@ -636,114 +517,6 @@ class Nerva_Gateway extends WC_Payment_Gateway
             setcookie('last_seen_block', $height, time() + 2700, COOKIEPATH, COOKIE_DOMAIN);
             return $difference;
         }
-    }
-    public function verify_non_rpc($payment_id, $amount, $order_id)
-    {
-        $bc_height = $this->xnv_tools->get_last_block_height();
-
-        $block_difference = $this->last_block_seen($bc_height);
-        
-        $txs_from_block = $this->xnv_tools->get_txs_from_block($bc_height);
-        $tx_count = count($txs_from_block) - 1; // The tx at index 0 is a coinbase tx so it can be ignored
-        
-        $output_found = null;
-        $block_index = null;
-        
-        if($block_difference != 0)
-        {
-            if($block_difference >= 2){
-                $this->log->add('[WARNING] Block difference is greater or equal to 2');
-            }
-            
-            $txs_from_block_2 = $this->xnv_tools->get_txs_from_block($bc_height - 1);
-            $tx_count_2 = count($txs_from_block_2) - 1;
-            
-            $i = 1;
-            while($i <= $tx_count_2)
-            {
-                $tx_hash = $txs_from_block_2[$i]['tx_hash'];
-                if(strlen($txs_from_block_2[$i]['payment_id']) != 0)
-                {
-                    $result = $this->xnv_tools->check_tx($tx_hash, $this->address, $this->viewKey);
-                    if($result)
-                    {
-                        $output_found = $result;
-                        $block_index = $i;
-                        $i = $tx_count_2; // finish loop
-                    }
-                }
-                $i++;
-            }
-        }
-
-        $i = 1;
-        while($i <= $tx_count)
-        {
-            $tx_hash = $txs_from_block[$i]['tx_hash'];
-            if(strlen($txs_from_block[$i]['payment_id']) != 0)
-            {
-                $result = $this->xnv_tools->check_tx($tx_hash, $this->address, $this->viewKey);
-                if($result)
-                {
-                    $output_found = $result;
-                    $block_index = $i;
-                    $i = $tx_count; // finish loop
-                }
-            }
-            $i++;
-        }
-        
-        if(isset($output_found))
-        {
-            $amount_atomic_units = $amount * 1000000000000;
-            
-            if($txs_from_block[$block_index]['payment_id'] == $payment_id && $output_found['amount'] >= $amount_atomic_units)
-            {
-                $this->on_verified($payment_id, $amount_atomic_units, $order_id);
-            }
-            if($txs_from_block_2[$block_index]['payment_id'] == $payment_id && $output_found['amount'] >= $amount_atomic_units)
-            {
-                $this->on_verified($payment_id, $amount_atomic_units, $order_id);
-            }
-            
-            return true;
-        }
-            return false;
-    }
-    
-    public function verify_zero_conf($payment_id, $amount, $order_id)
-    {
-        $txs_from_mempool = $this->xnv_tools->get_mempool_txs();;
-        $tx_count = count($txs_from_mempool['data']['txs']);
-        $i = 0;
-        $output_found = null;
-        
-        while($i <= $tx_count)
-        {
-            $tx_hash = $txs_from_mempool['data']['txs'][$i]['tx_hash'];
-            if(strlen($txs_from_mempool['data']['txs'][$i]['payment_id']) != 0)
-            {
-                $result = $this->xnv_tools->check_tx($tx_hash, $this->address, $this->viewKey);
-                if($result)
-                {
-                    $output_found = $result;
-                    $tx_i = $i;
-                    $i = $tx_count; // finish loop
-                }
-            }
-            $i++;
-        }
-        if(isset($output_found))
-        {
-            $amount_atomic_units = $amount * 1000000000000;
-            if($txs_from_mempool['data']['txs'][$tx_i]['payment_id'] == $payment_id && $output_found['amount'] >= $amount_atomic_units)
-            {
-                $this->on_verified($payment_id, $amount_atomic_units, $order_id);
-            }
-            return true;
-        }
-        else
-            return false;
     }
 
     public function do_ssl_check()
