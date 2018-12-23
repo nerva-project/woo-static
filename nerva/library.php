@@ -25,7 +25,6 @@ class Nerva_Library
     );
     protected $host;
     protected $port;
-    protected $explorer_url;
     private $httpErrors = array(
         400 => '400 Bad Request',
         401 => '401 Unauthorized',
@@ -39,7 +38,7 @@ class Nerva_Library
         503 => '503 Service Unavailable'
     );
 
-    public function __construct($pHost, $pPort, $pTestnet)
+    public function __construct($pHost, $pPort)
     {
         $this->validate(false === extension_loaded('curl'), 'The curl extension must be loaded to use this class!');
         $this->validate(false === extension_loaded('json'), 'The json extension must be loaded to use this class!');
@@ -47,15 +46,6 @@ class Nerva_Library
         $this->host = $pHost;
         $this->port = $pPort;
         $this->url = $pHost . ':' . $pPort . '/json_rpc';
-
-        if ($pTestnet){
-            $explorer_url = "testexplorer.getnerva.org";
-        }
-        else {
-            $explorer_url = "explorer.getnerva.org";
-        }
-
-
     }
 
     public function validate($pFailed, $pErrMsg)

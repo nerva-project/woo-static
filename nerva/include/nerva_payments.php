@@ -10,8 +10,6 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-
-
 class Nerva_Gateway extends WC_Payment_Gateway
 {
     private $reloadTime = 10000;
@@ -38,7 +36,6 @@ class Nerva_Gateway extends WC_Payment_Gateway
     private $mempool_tx_found = false;
     
     private $nerva_fiat_value = 1;
-    private $testnet;
 	
     function __construct()
     {
@@ -60,7 +57,6 @@ class Nerva_Gateway extends WC_Payment_Gateway
         $this->discount = $this->get_option('discount');
         $this->confirmations_wait = $this->get_option('confs');
         $this->nerva_fiat_value = $this->get_option('fiat_value');
-        $this->testnet = $this->get_option('environment');
         
         if($this->confirmations_wait == 0)
         {
@@ -84,7 +80,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
             add_action('woocommerce_email_before_order_table', array($this, 'email_instructions'), 10, 2);
         }
 		
-        $this->nerva_daemon = new Nerva_Library($this->host, $this->port, $this->testnet);
+        $this->nerva_daemon = new Nerva_Library($this->host, $this->port);
     }
     
     public static function install(){
@@ -152,13 +148,6 @@ class Nerva_Gateway extends WC_Payment_Gateway
                 'type' => __('number'),
                 'default' => '5'
 
-            ),
-            'environment' => array(
-                'title' => __(' Testnet', 'nerva_gateway'),
-                'label' => __(' Check this if you are using testnet ', 'nerva_gateway'),
-                'type' => 'checkbox',
-                'description' => __('Check this box if you are using testnet', 'nerva_gateway'),
-                'default' => 'no'
             ),
             'confs' => array(
                 'title' => __(' Confirmations to wait for', 'nerva_gateway'),
@@ -366,31 +355,31 @@ class Nerva_Gateway extends WC_Payment_Gateway
         if ($rows_num[0]->count > 0) // Checks if the row has already been created or not
         {
             $stored_rate = $wpdb->get_results("SELECT rate FROM ".$wpdb->prefix."nerva_gateway_payments_rate WHERE order_id='".$order_id."'");
-			$rate = $stored_rate[0]->rate / 10000; //this will turn the stored rate back into a decimaled number
+            $rate = $stored_rate[0]->rate / 10000; //this will turn the stored rate back into a decimaled number
         } else // If the row has not been created then the live exchange rate will be grabbed and stored
         {
             $xnv_live_price = $this->retrievePrice($fiatCurrency);
             if($xnv_live_price === null)
-            	return null;
-            
+                return null;
+
             $live_for_storing = $xnv_live_price * 10000; //This will remove the decimal so that it can easily be stored as an integer
 
             $wpdb->query("INSERT INTO ".$wpdb->prefix."nerva_gateway_payments_rate (payment_id,rate,order_id) VALUES ('".$payment_id."',$live_for_storing, $order_id)");
 			$rate = $xnv_live_price;
         }
-	
+
 		if (isset($this->discount)) {
 			$sanatized_discount = preg_replace('/[^0-9]/', '', $this->discount);
 			$discount_decimal = $sanatized_discount / 100;
 			$new_amount = $amount / $rate;
 			$discount = $new_amount * $discount_decimal;
 			$final_amount = $new_amount - $discount;
-			$rounded_amount = round($final_amount, 12);
+            $rounded_amount = round($final_amount, 12);
 		} else {
 			$new_amount = $amount / $rate;
-			$rounded_amount = round($new_amount, 12); //the moneo wallet can't handle decimals smaller than 0.000000000001
-		}
-
+            $rounded_amount = round($new_amount, 12); //the moneo wallet can't handle decimals smaller than 0.000000000001
+        }
+        
         return $rounded_amount;
     }
 
