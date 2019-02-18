@@ -15,6 +15,7 @@
 <script>window.ajaxurl = '<?php echo $ajaxurl ?>';</script>
 <script>window.orderId = '<?php echo $order_id ?>';</script>
 <script>
+	var finish_count=0;
 	function update() {
 		jQuery(document).ready(function () {
 			jQuery.post(
@@ -30,17 +31,42 @@
 					jQuery('#nerva_gateway_payment_wait').hide();
 					jQuery('#nerva_gateway_payment_process').hide();
 					jQuery('#nerva_gateway_payment_success').hide();
+					
+					if(response.confirmed === true) {
+						
+						if(finish_count>0){
+							clearInterval(intervalRefreshStatus);
+							document.location.reload(true);
+							
+						}
+						
+					}
 
 					if(response.confirmed === true) {
 						jQuery('#nerva_gateway_payment_success').show();
 						clearInterval(intervalRefreshStatus);
-					}else if(response.currentConfirmations === null)
+						
+						
+					}else if(response.paid=== null && response.currentConfirmations==null){
+						finish_count++;
+						
 						jQuery('#nerva_gateway_payment_wait').show();
-					else{
+						jQuery('#xnv_amount').val(response.amount);
+						
+					}else if(response.paid!=null || response.currentConfirmations!=null){
 						jQuery('#nerva_gateway_payment_process').show();
+					
 						jQuery('#nerva_gateway .count_currentConfirmations').html(response.currentConfirmations);
 						jQuery('#nerva_gateway .count_maxConfirmations').html(response.maxConfirmation);
-						jQuery('#nerva_gateway .meter .progress').css('width',''+Math.floor(response.currentConfirmations/response.maxConfirmation*100)+'%');
+						
+						jQuery('#nerva_gateway .count_paid').html(response.paid);
+						jQuery('#nerva_gateway .count_amount').html(response.amount);
+						jQuery('#nerva_gateway .diff').html((response.amount-response.paid).toFixed(12));
+						
+						jQuery('#nerva_gateway .meter #confirm-progress').css('width',''+Math.floor(response.currentConfirmations/response.maxConfirmation*100)+'%');
+						jQuery('#nerva_gateway .meter #currency-progress').css('width',''+Math.floor(response.paid/response.amount*100)+'%');
+						
+						
 					}
 					console.log(response);
 				}
@@ -48,6 +74,7 @@
 		});
 	}
 	
+	update();
 	var intervalRefreshStatus = setInterval(function(){
 		update();
 	}, <?= $this->reloadTime; ?>);
@@ -69,11 +96,24 @@
 			<div class="status message important info">
 				<i class="material-icons rotating" >replay</i>
 				<?php _e('Your payment is being processed', $pluginIdentifier) ?> (<span class="count_currentConfirmations" ><?= $displayedCurrentConfirmation ?></span>/<span class="count_maxConfirmations" ><?= $displayedMaxConfirmation ?></span> <?php _e('confirmations', $pluginIdentifier) ?>)
+				
 			</div>
 			<div class="meter">
-				<span class="progress" style="width: <?php echo $displayedCurrentConfirmation/$displayedMaxConfirmation*100; ?>%"></span>
+				
+				<span id="confirm-progress" class="progress" style="width: <?php echo $displayedCurrentConfirmation/$displayedMaxConfirmation*100; ?>%"></span>
 				<span class="text" >(<span class="count_currentConfirmations" ><?= $displayedCurrentConfirmation ?></span>/<span class="count_maxConfirmations" ><?= $displayedMaxConfirmation ?></span>) <?php _e('confirmations', $pluginIdentifier) ?></span>
+			
+			
 			</div>
+			
+			
+			<div class="meter">
+				
+				<span id="currency-progress" class="progress" style="width: 0%"></span>
+				<span class="text" >(<span class="count_paid" ><?= $paid ?></span>/<span class="count_amount" ><?= $amount ?></span>) Payment</span>
+
+			</div>
+			<span class="text" >Pending: <span class="diff"></span></span> 
 		</div>
 	
 		<div id="nerva_gateway_payment_wait" <?php if(!(!$transactionConfirmed && $displayedCurrentConfirmation === null)): ?>style="display:none"<?php endif; ?>>
@@ -93,7 +133,8 @@
 			<div class="xnv-amount-send">
 				<div class="data-box" >
 					<label><?php _e('Amount', $pluginIdentifier) ?></label>
-					<input id="xnv_amount" type="text" disabled="disabled" class="value" value="<?= $amount_xnv2 ?>">
+					<input id="xnv_amount" type="text" disabled="disabled" class="value" value="">
+					
 					<button class="copy" onclick="setTextInClipboard('xnv_amount')" title="<?php _e('Copy', $pluginIdentifier) ?>"><i class="material-icons" >content_copy</i></button>
 				</div>
 				<div class="data-box" >

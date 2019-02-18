@@ -6,10 +6,6 @@
  * Modified to work with Nerva
  */
 
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 class Nerva_Gateway extends WC_Payment_Gateway
 {
     private $reloadTime = 10000;
@@ -34,7 +30,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
 	private $zero_confirm;
 	/** @var string  */
     private $mempool_tx_found = false;
-    
+    private $totalPayedAmount;
     private $nerva_fiat_value = 1;
 	
     function __construct()
@@ -267,6 +263,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
 		$payment_id = $this->get_paymentid_cookie($order_id);
 		$currency = $order->get_currency();
 		$amount_xnv2 = $this->changeto( $amount, $currency, $payment_id, $order_id);
+		$amount_xnv2=round($amount_xnv2,1);
 		$address = $this->address;
 		
 		$order->update_meta_data( "Payment ID", $payment_id);
@@ -277,8 +274,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
 		$displayedPaymentId = null;
 	
 		if($amount_xnv2 !== null){
-            //TODO: QR codes need to be tested. Commenting this out will hide the QR code box until we know they are working
-			//$qrUri = "nerva:$address?tx_payment_id=$payment_id";
+			$qrUri = "nerva:$address?tx_payment_id=$payment_id";
 			
 			$array_integrated_address = $this->nerva_daemon->make_integrated_address($payment_id);
 			if(!isset($array_integrated_address)){
@@ -304,6 +300,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
 		$displayedMaxConfirmation = (int)$this->confirmations_wait;
 	
 		$transactionConfirmed = $this->confirmed;
+		$paid=$this->totalPayedAmount;
 		$pluginIdentifier = 'nerva_gateway';
 		if(!$ajax){
 			$ajaxurl = admin_url('admin-ajax.php');
@@ -316,7 +313,8 @@ class Nerva_Gateway extends WC_Payment_Gateway
 				'maxConfirmation'=>$displayedMaxConfirmation,
 				'paymentAddress'=>$displayedPaymentAddress,
 				'paymentId'=>$displayedPaymentId,
-				'amount'=>$amount_xnv2
+				'amount'=>$amount_xnv2,
+				'paid'=>$paid
 			));
 		}
     }
@@ -450,27 +448,26 @@ class Nerva_Gateway extends WC_Payment_Gateway
         $this->mempool_tx_found = false;
         $i = 1;
         $correct_tx;
-        $amount_atomic_units = $amount * 1000000000000;
-        if (isset($pool_txs))
+        while($i <= count($pool_txs))
         {
-            while($i <= count($pool_txs))
-            {
-                if($pool_txs[$i-1]["payment_id"] == $payment_id)
-                {
-                    $this->mempool_tx_found = true;
-                    $tx_index = $i - 1;
-                    if($this->confirmations_wait == 0)
-                    {
-                        if($pool_txs[$tx_index]["amount"] >= $amount_atomic_units)
-                        {
-                            $this->on_verified($payment_id, $amount_atomic_units, $order_id);
-                        }
-                    }
-                }
-                $i++;
-            }            
+           if($pool_txs[$i-1]["payment_id"] == $payment_id)
+           {
+               $this->mempool_tx_found = true;
+               $tx_index = $i - 1;
+           }
+           $i++;
         }
-
+        
+        $amount_atomic_units = $amount * 1000000000000;
+        
+        if($this->confirmations_wait == 0)
+        {
+            if($pool_txs[$tx_index]["amount"] >= $amount_atomic_units)
+            {
+               $this->on_verified($payment_id, $amount_atomic_units, $order_id);
+            }
+        }
+        
         $get_payments_method = $this->nerva_daemon->get_payments($payment_id);
         if (isset($get_payments_method["payments"][0]["amount"])) {
 			$totalPayed = $get_payments_method["payments"][0]["amount"];
@@ -480,7 +477,12 @@ class Nerva_Gateway extends WC_Payment_Gateway
 			while($output_counter < $outputs_count){
 				$totalPayed += $get_payments_method["payments"][$output_counter]["amount"];
 				$output_counter++;
+				
 			}
+			//added
+			$this->totalPayedAmount=$totalPayed/1000000000000;
+
+				
 			if($totalPayed >= $amount_atomic_units){
 				$tx_height = $get_payments_method["payments"][$outputs_count-1]["block_height"];
 				$get_height = $this->nerva_daemon->getheight();
@@ -493,6 +495,7 @@ class Nerva_Gateway extends WC_Payment_Gateway
 			}
         }
     }
+
     public function last_block_seen($height) // sometimes 2 blocks are mined within a few seconds of eacher. Make sure we don't miss one
     {
         if (!isset($_COOKIE['last_seen_block']))

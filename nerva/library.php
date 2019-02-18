@@ -10,12 +10,6 @@
  * http://implix.com
  * Modified to work with monero-rpc wallet by Serhack and cryptochangements
  */
-
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-
 class Nerva_Library
 {
     protected $url = null, $is_debug = false, $parameters_structure = 'array';
@@ -312,6 +306,7 @@ class Nerva_Library
         if (empty($response) || !isset($response["pool"]))
             return;
         else
-	        return $response["pool"];
+			return $response["pool"];
     }
+    
 }

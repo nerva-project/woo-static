@@ -1,17 +1,12 @@
 <?php
 /*
-Plugin Name: NERVA - WooCommerce Gateway
+Plugin Name: NERVA-Static - WooCommerce XNV Gateway
 Plugin URI: https://getnerva.org
-Description: Extends WooCommerce by Adding the NERVA Gateway
-Version: 2.0
+Description: WooCommerce plugin for XNV as a payment option. Converts fiat prices to XNV based on a static conversion rate
+Version: 1.0
 Author: NERVA Project
 Author URI: https://getnerva.org
 */
-
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
